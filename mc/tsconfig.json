@@ -1,0 +1,17 @@
+{
+  "extends": "@commercetools-frontend/application-config/tsconfig-mc-app.json",
+  "compilerOptions": {
+    // The published .d.ts of several dependencies are broken (application-shell
+    // ships monorepo-relative import paths; formik and nimbus-transitive
+    // react-use/chakra typings are incompatible with React 19). Our own sources
+    // are still fully checked.
+    "skipLibCheck": true,
+    // Ambient declarations for the build's non-code imports (`*.svg` → a `data:` URL, `*.png`, CSS
+    // modules) come from `@commercetools-frontend/application-config/client`, referenced at the top of
+    // `src/index.tsx` — there is no local `@types` root to add here.
+    "preserveSymlinks": false
+  },
+  // `test` as well as `src`: left out, `npm run typecheck` never sees the spec files, and with no
+  // standalone type gate on them a broken test compiles only under ts-jest at run time.
+  "include": ["src", "test"]
+}

@@ -1,0 +1,116 @@
+/* Unzer panel styling — global classes complementing the UI Kit token remap (theme.ts). */
+:root {
+  --unzer-primary: #ed1856;
+  --unzer-primary-dark: #c9134a;
+  --unzer-black: #0c1332;
+  --unzer-grey: #606060;
+  --unzer-border: #dce0e5;
+}
+
+/* Buttons */
+.unzer-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 11px 22px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease;
+  /* The three actions read as one control group: equal width whatever their label is. */
+  min-width: 120px;
+  text-align: center;
+}
+.unzer-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.unzer-btn--primary {
+  background: var(--unzer-primary);
+  color: #fff;
+}
+.unzer-btn--primary:hover:not(:disabled) {
+  background: var(--unzer-primary-dark);
+}
+.unzer-btn--dark {
+  background: var(--unzer-black);
+  color: #fff;
+}
+.unzer-btn--dark:hover:not(:disabled) {
+  background: #000;
+}
+
+/* Order-details panel */
+.unzer-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.unzer-method {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.unzer-method__logo {
+  width: 40px;
+  height: 26px;
+  object-fit: contain;
+  flex: none;
+}
+
+.unzer-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.unzer-status--success {
+  background: #e6f8ed;
+  color: #07863a;
+}
+.unzer-status--pending {
+  background: #fff4e5;
+  color: #9a6400;
+}
+.unzer-status--error {
+  background: #fdecec;
+  color: #c0341d;
+}
+
+/* Plain amount input (no uikit dependency) */
+.unzer-input {
+  width: 100%;
+  max-width: 220px;
+  padding: 8px 10px;
+  border: 1px solid var(--unzer-border);
+  border-radius: 6px;
+  font: inherit;
+  box-sizing: border-box;
+}
+.unzer-input:focus {
+  outline: none;
+  border-color: var(--unzer-primary);
+}
+
+/* Blocks the whole panel while an operation is out, or while the re-read that states its outcome is
+   running. Fixed rather than absolute: the Custom View is its own iframe, so this covers exactly the
+   panel's own viewport and nothing of the Merchant Center around it. */
+.unzer-blocking-overlay {
+  position: fixed;
+  inset: 0;
+  /* Above the Merchant Center's own modal layer: the confirmation dialog is a body-level portal, and
+     this has to cover it as well as the panel. */
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.82);
+  cursor: progress;
+}
+/* The spinner is the whole message, so it has to read as one from across the screen: the UI Kit's
+   largest scale is still a control-sized glyph, and this is a page-sized block. */
+.unzer-blocking-overlay svg {
+  transform: scale(2.5);
+  transform-origin: center;
+}

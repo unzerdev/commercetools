@@ -1,0 +1,517 @@
+/* Unzer theme - own CSS (full theming, not UI Kit tokens). */
+
+/* The Merchant Center app-shell scrolls the page on its `main` element, which it styles
+   `overflow-y: scroll` - the scrollbar is PERMANENT, not conditional. While any modal is open it then
+   injects `main { overflow: hidden !important }` to lock the background, which takes that scrollbar
+   away: `main`'s content box grows by its width and everything centred inside - this app's content
+   column and the two-column connection layout - slides right the moment the dialog appears.
+   Keeping the scrollbar is the whole fix. Compensating for its removal instead (padding the width back
+   on) means measuring it at exactly the right instant, which is a race with the shell's own re-render;
+   this is not. The specificity is what wins the fight: `body main` (0,0,2) outranks the shell's `main`
+   (0,0,1), so it holds regardless of which stylesheet is injected last.
+   The cost is that the page behind a dialog stays scrollable. These dialogs are Radix `modal: false`
+   already - they trap neither focus nor pointer events - so the lock was never the thing making them
+   modal. */
+body main {
+  overflow-y: scroll !important;
+}
+
+/* The dialog appears in the wrong place for one frame, then snaps right.
+   `#portals-container` is an in-flow 1px-tall flex box (inside `main`, so inside its scrollbar) until a
+   modal opens; only THEN does the app-shell make it `position: fixed; width: calc(100% - 80px); right: 0`.
+   A dialog centred in the first box and then in the second lands about half a scrollbar to the right, and
+   the shell's own `transition: width 150ms` on the container animates the difference - a visible slide
+   just as the dialog shows up.
+   Both are handled here: the transition is cancelled (nothing about these dialogs changes width while
+   open), and the contents fade in over the reflow, so the frame in the old position is never painted.
+   The geometry itself is left to the shell - matching its `calc()`s here would hardcode the navigation
+   width and the header height, and break the day either changes. */
+#portals-container {
+  transition: none !important;
+}
+#portals-container > * {
+  animation: unzer-portal-in 140ms ease-out both;
+}
+@keyframes unzer-portal-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+:root {
+  --unzer-primary: #ed1856;
+  --unzer-primary-dark: #c9134a;
+  --unzer-black: #0c1332;
+  --unzer-grey: #606060;
+  --unzer-border: #dce0e5;
+}
+
+/* Banner (red bar, white logo, store context) */
+.unzer-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 61px;
+  background: var(--unzer-primary);
+  padding: 0 25px;
+}
+.unzer-banner__left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 61px;
+}
+.unzer-banner__divider {
+  width: 1px;
+  height: 34px;
+  background: #fff;
+  opacity: 0.55;
+}
+.unzer-banner__context {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.unzer-banner__label {
+  color: #fff;
+  font-size: 13px;
+  opacity: 0.9;
+}
+/* The in-flight indicator next to the store selector. The UI Kit spinner paints itself in
+   `colorPrimary` - the SAME magenta as this bar (see src/theme.ts) - so it is invisible directly on
+   it; a white disc behind it gives the spinner its contrast back. */
+.unzer-banner__spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border-radius: 50%;
+  padding: 4px;
+}
+.unzer-banner__select {
+  min-width: 200px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0 10px;
+  font-size: 14px;
+  color: #20304c;
+  cursor: pointer;
+}
+
+/* Tabs */
+.unzer-tabs {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  border-bottom: 1px solid var(--unzer-border);
+  margin: 0 32px;
+}
+.unzer-tab {
+  padding: 12px 0;
+  text-decoration: none;
+  color: var(--unzer-grey);
+  font-weight: 600;
+  font-size: 14px;
+  border-bottom: 2px solid transparent;
+}
+.unzer-tab--active {
+  color: var(--unzer-primary);
+  border-bottom-color: var(--unzer-primary);
+}
+
+/* Buttons */
+.unzer-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 11px 22px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease;
+}
+.unzer-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.unzer-btn--primary {
+  background: var(--unzer-primary);
+  color: #fff;
+}
+.unzer-btn--primary:hover:not(:disabled) {
+  background: var(--unzer-primary-dark);
+}
+.unzer-btn--dark {
+  background: var(--unzer-black);
+  color: #fff;
+}
+.unzer-btn--dark:hover:not(:disabled) {
+  background: #000;
+}
+
+/* A click BESIDE a dialog must not dismiss it. UI Kit turns pointer events OFF on the dialog's own
+   full-viewport grid so that a click on the surrounding surface reaches the overlay and closes the modal;
+   turning them back on means such a click lands on the dialog layer instead - Radix sees it as INSIDE,
+   fires no dismissal, and it no longer reaches the page behind either (these dialogs do not trap
+   pointers). The ✕ and Escape still close, and `onClose` is additionally guarded in `ui.tsx` in case a
+   future UI Kit stops relying on this.
+   Selectors are the STABLE hooks - a data attribute and a role - never the emotion class names, which
+   lose their labels in a production build. */
+[data-role='dialog-overlay'] div[role='dialog'] {
+  pointer-events: auto;
+}
+
+/* Settings-modal title - the method's logo sits BESIDE its name in the dialog header, so the body no
+   longer repeats the name under a centred logo. */
+.unzer-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ConfirmationDialog "Cancel" (secondary) button → Unzer black, not the default indigo */
+button[data-unzer-cancel],
+button[data-unzer-cancel]:hover,
+button[data-unzer-cancel]:active,
+button[data-unzer-cancel]:focus {
+  border-color: var(--unzer-black) !important;
+  color: var(--unzer-black) !important;
+  background: #fff !important;
+}
+
+/* Busy overlay - one large centred spinner over a scrim that swallows every click while a request is
+   in flight. Portaled to `body` (see `busy-overlay.tsx`) and above the app-shell's dialog layer, so a
+   save started INSIDE a dialog is covered too; the UI Kit spinner maxes out at 32px, hence the scale. */
+.unzer-busy {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.72);
+  cursor: progress;
+}
+.unzer-busy > * {
+  transform: scale(2.2);
+  transform-origin: center;
+}
+
+/* Secret field - the reveal ("eye") toggle sits INSIDE the input, so a masked field is exactly as
+   wide as a plain one beside it. UI Kit's PasswordInput has no icon slot, hence the absolute overlay;
+   the input reserves room for it with its own right padding. */
+.unzer-secret-field {
+  position: relative;
+}
+.unzer-secret-field input {
+  padding-right: 48px;
+}
+.unzer-secret-field__toggle {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  line-height: 0;
+  cursor: pointer;
+}
+
+/* Link */
+.unzer-link {
+  color: var(--unzer-primary);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.unzer-link:hover {
+  text-decoration: underline;
+}
+
+/* Radio — NATIVE input, only recolored via accent-color (perfectly centered) */
+.unzer-radio-group {
+  display: flex;
+  gap: 28px;
+  justify-content: center;
+}
+/* Left-aligned where the group sits inside a form field rather than centred under a heading. */
+.unzer-radio-group--start {
+  justify-content: flex-start;
+}
+.unzer-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.unzer-radio input[type='radio'] {
+  accent-color: var(--unzer-black);
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Payment methods - EXACTLY two per row, one when there is no room for two. A fixed pair of columns,
+   not `auto-fit`: on the widened content column `auto-fit` fitted a third card, which made every name
+   narrow again. `minmax(0, 1fr)` (not `1fr`) is what lets a card shrink below its content so the name
+   truncates inside it instead of stretching the grid. */
+.unzer-pm-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+@media (max-width: 800px) {
+  .unzer-pm-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Payment method row - the ROW never wraps: letting it reflow pushed `Learn more` and the toggle onto a
+   second line, so cards in the same grid row grew to different heights. The NAME is what gives way -
+   it wraps over at most two lines (see `.unzer-pm-name`) - and the actions keep their width. */
+.unzer-pm-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: nowrap;
+  height: 100%;
+}
+.unzer-pm-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  /* `min-width: 0` on both the flex item and its text child: without it a flex child refuses to shrink
+     below its content width and neither the wrap nor the ellipsis ever engages. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The method name: bold body text that WRAPS over two lines rather than widening its card, and steps
+   down a size or two as it gets longer so a name like "Cards and Click to Pay" is read in full instead
+   of cut off. Past two lines it ellipsizes and `title` hands the rest back on hover. */
+.unzer-pm-name {
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+  /* Above body size: the name is what the operator scans this list for, and two cards per row on the
+     widened column leave it the space to be the loudest thing in its row. */
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--unzer-black);
+}
+.unzer-pm-name--long {
+  font-size: 15px;
+}
+.unzer-pm-name--longest {
+  font-size: 14px;
+}
+.unzer-pm-logo {
+  width: 56px;
+  height: 36px;
+  object-fit: contain;
+  flex: none;
+}
+.unzer-pm-ops {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: none;
+}
+.unzer-pm-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  /* A notch below the 16px method name: `Settings` / `Learn more` is the row's SECONDARY affordance next
+     to the toggle, so it stays quieter than the name - but readable, not fine print. */
+  font-size: 14px;
+  color: var(--unzer-primary);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.unzer-pm-link:hover {
+  text-decoration: underline;
+}
+
+/* A toggle with its own text: the text is INSIDE the label, so clicking it flips the switch. */
+.unzer-toggle-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.unzer-toggle-field__label {
+  font-size: 14px;
+  color: var(--unzer-black);
+}
+
+/* Toggle — red when on */
+.unzer-toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  cursor: pointer;
+  flex: none;
+}
+.unzer-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.unzer-toggle__track {
+  position: absolute;
+  inset: 0;
+  background: #c9cdd6;
+  border-radius: 999px;
+  transition: background 0.15s ease;
+}
+.unzer-toggle__track::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.15s ease;
+}
+.unzer-toggle input:checked + .unzer-toggle__track {
+  background: var(--unzer-primary);
+}
+.unzer-toggle input:checked + .unzer-toggle__track::before {
+  transform: translateX(20px);
+}
+
+/* ── Layout: components carry class names, never inline `style` objects ── */
+
+/* The centred content column below the banner, shared by both tabs so they line up on both edges. */
+.unzer-app {
+  font-family: inherit;
+}
+.unzer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px;
+}
+
+/* An accessible name the screen needs but does not show. Clipped, not `display: none`, which would
+   also take it out of the a11y tree. */
+.unzer-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Connection tab: form beside promo card. The caps add up to the content column's inner width
+   (1136 = 640 + 48 gap + 448); they stack when there is no room for two. */
+.unzer-connect-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 48px;
+  align-items: flex-start;
+  justify-content: center;
+}
+.unzer-connect-col {
+  flex: 1 1 420px;
+  min-width: 320px;
+  max-width: 640px;
+  text-align: center;
+}
+.unzer-connect-col--promo {
+  flex: 1 1 300px;
+  min-width: 280px;
+  max-width: 448px;
+  background: #fff4f8;
+  border: 1px solid #f0d3dd;
+  border-radius: 8px;
+  padding: 32px;
+}
+.unzer-connect-illustration {
+  width: 100%;
+  max-width: 230px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+/* The action row: primary (+ its spinner) on the left, Disconnect on the right. */
+.unzer-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.unzer-action-row__group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* A field whose value is scoped by a small selector beside it (text + language, amount + currency).
+   `min-width: 0` is what lets the value shrink instead of pushing the row wider. */
+.unzer-field-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.unzer-field-row__value {
+  flex: 1;
+  min-width: 0;
+}
+.unzer-field-row__scope {
+  flex: none;
+  width: 104px;
+}
+.unzer-field-row__scope--locale {
+  width: 116px;
+}
+
+/* A flag-led select option. `inline-flex` + `min-width: 0` + `overflow: hidden` are load-bearing: as a
+   plain flex box this label painted over its chip's remove button, leaving the x unclickable. */
+.unzer-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+.unzer-option__flag {
+  border-radius: 2px;
+  display: block;
+  flex: none;
+}
+.unzer-option__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

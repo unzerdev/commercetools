@@ -1,0 +1,14 @@
+{
+  "extends": "@commercetools-frontend/application-config/tsconfig-mc-app.json",
+  "compilerOptions": {
+    "typeRoots": ["@types", "node_modules/@types"],
+    // Allow tsc to resolve dependencies of `@types` packages in the way pnpm sets up the `node_modules`.
+    "preserveSymlinks": false,
+    // The published .d.ts of several dependencies are broken (application-shell
+    // ships monorepo-relative import paths; formik and nimbus-transitive
+    // react-use/chakra typings are incompatible with React 19). Our own sources
+    // are still fully checked.
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}

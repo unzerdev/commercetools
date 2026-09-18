@@ -1,0 +1,132 @@
+deployAs:
+  - name: enabler
+    applicationType: assets
+    # No `scripts` here: Connect rejects the key on an `assets` application, so its "postDeploy is not
+    # defined" notice in the deploy log is the platform's and cannot be silenced from this file.
+  - name: processor
+    applicationType: service
+    endpoint: /
+    # Route auth model: the merchant `/operations/*` routes are CT-session/JWT authenticated and the shopper
+    # `/payments` route uses the CT session token. The public RETURN route is intentionally OUTSIDE that auth
+    # group - the shopper's browser and the PSP reach it after the hosted flow - and is authenticated
+    # STRUCTURALLY: the vendor payment id is taken only from the server-stamped field on the named Payment and
+    # compared timing-safe against the id the vendor answered with. The webhook receiver is a separate public
+    # route, gated by the capability token in its path.
+    scripts:
+      postDeploy: npm install && npm run connector:post-deploy
+      preUndeploy: npm install && npm run connector:pre-undeploy
+    configuration:
+      standardConfiguration:
+        - key: CTP_PROJECT_KEY
+          description: >-
+            commercetools Project key, e.g. my-store-prod.
+          required: true
+        - key: CTP_CLIENT_ID
+          description: >-
+            ID of the commercetools API Client. It needs the scopes manage_payments, manage_orders,
+            view_sessions, manage_checkout_payment_intents, introspect_oauth_tokens, manage_types, view_types,
+            manage_states, view_stores, view_project_settings, manage_key_value_documents and view_customers;
+            a missing one surfaces on GET /operations/status.
+            Docs: https://docs.commercetools.com/api/projects/api-clients and
+            https://docs.commercetools.com/api/scopes
+          required: true
+        - key: CTP_REGION
+          description: >-
+            Region of the Project as {cloudRegion}.{cloudProvider}, e.g. europe-west1.gcp or eu-central-1.aws.
+            Every commercetools URL the processor calls derives from it.
+            Docs: https://docs.commercetools.com/api/general-concepts#hosts
+          required: true
+        # Brand identity (display name, payment interface, telemetry header, integrator, vendor hosts,
+        # back-office URLs, manage permission) is NOT declared here: it ships in
+        # processor/src/providers/psp/brand.defaults.json. There is no per-deployment override for any of it.
+        - key: PSP_ALLOWED_RETURN_ORIGINS
+          description: >-
+            Comma-separated origins of the storefronts allowed to receive the shopper back after payment, e.g.
+            https://shop.example.com,https://checkout.example.com. Left empty, every http(s) origin is accepted.
+          required: false
+        - key: PSP_RETURN_FAILURE_URL
+          description: >-
+            Storefront URL the shopper is sent to when the return leg fails, e.g.
+            https://shop.example.com/payment/failed. The processor refuses to start without it.
+          required: true
+      securedConfiguration:
+        - key: CTP_CLIENT_SECRET
+          description: >-
+            Secret of the commercetools API Client named in CTP_CLIENT_ID.
+            Docs: https://docs.commercetools.com/api/projects/api-clients
+          required: true
+        # The Unzer key pair is NOT declared here: it is entered per store in the Merchant Center application
+        # and stored encrypted in a commercetools Custom Object.
+        - key: ENCRYPTION_KEY
+          description: >-
+            AES-256-GCM key that encrypts the stored Unzer credentials and mints the webhook token. Generate it
+            with `openssl rand -hex 32`. Required; rotate through ENCRYPTION_KEY_PREVIOUS, never by replacing
+            this value outright.
+          required: true
+        - key: ENCRYPTION_KEY_PREVIOUS
+          description: >-
+            The previous ENCRYPTION_KEY, set only while rotating. The post-deploy re-encrypts the stored
+            secrets under the new key and re-registers every webhook. Clear it after the rotation.
+          required: false
+  - name: mc
+    applicationType: merchant-center-custom-application
+    # The Custom Application is registered in the Merchant Center by hand; nothing to provision here.
+    scripts:
+      postDeploy: node -e "console.log('mc - registered in the Merchant Center, nothing to provision')"
+      preUndeploy: node -e "console.log('mc - nothing to remove; unregister the Custom Application in the Merchant Center if it is retired')"
+    configuration:
+      standardConfiguration:
+        - key: CUSTOM_APPLICATION_ID
+          description: >-
+            ID the Merchant Center assigned when this Custom Application was registered.
+            Docs: https://docs.commercetools.com/merchant-center/managing-custom-applications
+          required: true
+        - key: ENTRY_POINT_URI_PATH
+          description: >-
+            The entry point URI path this Custom Application was registered under; recommended: unzer-payments.
+            It also names the permission operators need (unzer-payments gives canManageUnzerPayments), so the
+            mc-view deployment must use the IDENTICAL value. Lowercase letters and single hyphens only, and
+            never a trailing hyphen plus one digit.
+            Docs: https://docs.commercetools.com/merchant-center-customizations/tooling-and-configuration/custom-application-config#configuration-properties
+          required: true
+        - key: CLOUD_IDENTIFIER
+          description: >-
+            Region of the Merchant Center API this application authenticates against, e.g. gcp-eu. Not the
+            processor URL.
+          default: 'gcp-eu'
+        - key: PROCESSOR_URL
+          description: >-
+            Base URL of the processor, e.g. https://my-connector.europe-west1.gcp.commercetools.app. Leave it
+            empty on the first install - the processor has no URL yet. Once it is deployed, copy the URL
+            Connect assigned it into this field and into the mc-view deployment, then deploy again.
+          required: false
+  - name: mc-view
+    applicationType: merchant-center-custom-view
+    # The Custom View is registered in the Merchant Center by hand; nothing to provision here.
+    scripts:
+      postDeploy: node -e "console.log('mc-view - registered in the Merchant Center, nothing to provision')"
+      preUndeploy: node -e "console.log('mc-view - nothing to remove; unregister the Custom View in the Merchant Center if it is retired')"
+    configuration:
+      standardConfiguration:
+        - key: CUSTOM_VIEW_ID
+          description: >-
+            ID the Merchant Center assigned when this Custom View was registered.
+            Docs: https://docs.commercetools.com/merchant-center-customizations/tooling-and-configuration/custom-view-config
+          required: true
+        - key: ENTRY_POINT_URI_PATH
+          description: >-
+            Copy the value given to the mc deployment - it must be IDENTICAL, recommended: unzer-payments. Both
+            applications derive the operator permission from it, so two different values leave the payments
+            panel with a permission the processor does not accept and every read, capture, refund and cancel
+            answers 403.
+          required: true
+        - key: CLOUD_IDENTIFIER
+          description: >-
+            Region of the Merchant Center API this view authenticates against, e.g. gcp-eu. Not the processor
+            URL.
+          default: 'gcp-eu'
+        - key: PROCESSOR_URL
+          description: >-
+            Base URL of the processor, the same value given to the mc deployment. Leave it empty on the first
+            install and fill it in once the processor is deployed.
+          required: false

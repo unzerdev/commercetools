@@ -1,0 +1,19 @@
+# Keep secrets, local installs, build output, and tests OUT of every image build context.
+node_modules
+dist
+build
+coverage
+.nyc_output
+test
+tests
+**/*.spec.ts
+**/*.test.ts
+.env
+.env.*
+!.env.template
+*.log
+.git
+.gitignore
+.gitattributes
+.DS_Store
+*.md

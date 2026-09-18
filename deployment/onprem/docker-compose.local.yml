@@ -1,0 +1,38 @@
+# Local-run overlay for the production stack.
+#
+# The hardened stack publishes ONE host port (the TLS front) and reaches every application through it
+# by `server_name`. Locally there are no certificates for the four public hostnames, so this overlay
+# takes the front out of the default `up` and publishes each application on its own loopback port
+# instead. Nothing else about the images, the hardening or the env contract changes.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml --env-file .env up -d --build
+#
+# The processor still has to be reachable from the public internet for the merchant surfaces to work:
+# the Merchant Center API Gateway fetches `X-Forward-To` server-side and Unzer posts webhooks, and
+# neither resolves this machine's hosts file. Point a tunnel at 127.0.0.1:3006 and put that https
+# origin in PROCESSOR_URL before building mc / mc-view.
+#
+# Host port == box port, so `<port>-port.unz.dev.logeecom.com` reaches `127.0.0.1:<port>` here through
+# one reverse-forward rule per port:  processor 3006, mc 3003, mc-view 3004, enabler 3005.
+
+services:
+  processor:
+    ports:
+      - '127.0.0.1:3006:8080'
+
+  enabler:
+    ports:
+      - '127.0.0.1:3005:8080'
+
+  mc:
+    ports:
+      - '127.0.0.1:3003:8080'
+
+  mc-view:
+    ports:
+      - '127.0.0.1:3004:8080'
+
+  # Kept out of a plain `up`; start it with `--profile front` once ./tls holds fullchain.pem + privkey.pem.
+  nginx:
+    profiles:
+      - front

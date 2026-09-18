@@ -1,0 +1,68 @@
+version: "3.8"
+
+# Dev stack for the v2 connector.
+#
+# Each app is standalone: it mounts only its own folder at /home/node/app (no
+# shared-module prebuild). mc and mc-view are opt-in via profiles.
+#
+# There is NO JWT mock: the processor always validates merchant JWTs against the
+# real Merchant Center JWKS derived from CTP_REGION in its own .env.
+
+services:
+  enabler:
+    image: node:22
+    volumes:
+      - ./enabler:/home/node/app
+    restart: always
+    working_dir: /home/node/app
+    depends_on:
+      - processor
+    # The enabler is a LIBRARY: there is no dev page to serve, so this builds the bundle and serves
+    # `public/` with CORS on :3000 - the address a storefront points VITE_ENABLER_URL at.
+    command: /bin/sh -c 'npm install && npm run serve'
+    ports:
+      - 3000:3000
+
+  processor:
+    image: node:22
+    volumes:
+      - ./processor:/home/node/app
+    working_dir: /home/node/app
+    env_file:
+      - ./processor/.env
+    command: /bin/sh -c 'npm install && npm run dev'
+    ports:
+      - 8080:8080
+
+  mc:
+    image: node:22
+    volumes:
+      - ./mc:/home/node/app
+    restart: always
+    working_dir: /home/node/app
+    command: /bin/sh -c 'npm install && npm run start'
+    env_file:
+      - ./mc/.env
+    # Opt-in service: started only with `docker compose --profile mc up -d`.
+    profiles: ["mc"]
+    ports:
+      - "3001:3001"
+
+  mc-view:
+    image: node:22
+    volumes:
+      - ./mc-view:/home/node/app
+    restart: always
+    working_dir: /home/node/app
+    command: /bin/sh -c 'npm install && npm run start'
+    env_file:
+      - ./mc-view/.env
+    # Opt-in service: started only with `docker compose --profile mc-view up -d`.
+    profiles: ["mc-view"]
+    ports:
+      # The MC dev toolchain hardcodes its development origin to
+      # http://localhost:3001 (application-config `developmentPort`, upstream
+      # "TODO: make it configurable") — any other port serves a page whose baked
+      # URLs point at 3001. mc and mc-view therefore share 3001 and are mutually
+      # exclusive in dev: run one profile at a time (the port collision enforces it).
+      - "3001:3001"

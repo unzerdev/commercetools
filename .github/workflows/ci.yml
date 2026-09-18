@@ -1,0 +1,151 @@
+name: CI
+
+on: [push]
+
+jobs:
+  # The application gates. `connect validate` below builds all four through buildpacks and runs each one's
+  # `npm test` inside the container (its post-buildpack `connect-tester`), but it runs no eslint and no
+  # standalone tsc, and it reports a test run it cannot read the result of as a success - see the check step
+  # in that job. Without these jobs the only enforcement in the repository is the lint-staged pre-commit
+  # hook, which runs prettier alone and which `--no-verify` skips, so a lint error or a type error reaches
+  # the default branch unnoticed, and a red suite reaches it whenever the container swallows the result.
+  #
+  # One job per application rather than one chained job: the four are standalone (no npm workspaces), so a
+  # failure names the application it belongs to instead of aborting the rest at the first `cd`.
+  gate:
+    name: Gate ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Every application's verdict on every push - stopping at the first failure would hide the others.
+      fail-fast: false
+      matrix:
+        include:
+          # processor and enabler have no `typecheck` script: their `build` runs tsc, so it is the
+          # type gate as well as the build one.
+          - app: processor
+            commands: npm run lint && npm test && npm run build
+          - app: enabler
+            commands: npm run lint && npm test
+          - app: mc
+            commands: npm run lint && npm run typecheck && npm test
+          - app: mc-view
+            commands: npm run lint && npm run typecheck && npm test
+          # e2e has no eslint config and its `test` is Playwright against a running stack plus live Unzer
+          # sandbox credentials, so the compiler is the whole gate that can run unattended here.
+          - app: e2e
+            commands: npm run typecheck
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Use Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.x'
+
+      - name: Install
+        run: npm ci
+
+      - name: Gate
+        run: ${{ matrix.commands }}
+
+  validate:
+    name: Validate the applications
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Use Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.x'
+
+      # `connect validate` builds all four applications through buildpacks, and each export writes a
+      # layer tarball to /tmp. On a stock ubuntu-latest runner the fourth export ran out of disk:
+      #   failed to add file .../node_modules/storybook/dist/test/index.js to archive:
+      #   write /tmp/lifecycle.exporter.layer.../slice-1.tar: no space left on device
+      # The application that failed was whichever happened to be built last, which is why the failure
+      # moved between mc and mc-view from run to run while both build cleanly on their own. The
+      # preinstalled toolchains below are worth tens of gigabytes and nothing here uses them.
+      - name: Free disk space for the buildpack exports
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost /usr/local/share/powershell \
+                      /usr/local/lib/node_modules /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune --all --force || true
+          df -h / | tail -1
+
+      - name: Validate
+        run: |
+          npm install -g @commercetools/cli
+          set +e
+          commercetools connect validate --skip analysis
+          status=$?
+          set -e
+          # `connect validate` names the application that failed but not the reason: that is written to
+          # `.connect/<app>/build.log`. Printing the tail here puts the message in the run's own output,
+          # where a reader sees it without leaving the page; the archive step below publishes the same
+          # logs in full for a failure the last 80 lines do not explain.
+          if [ "$status" -ne 0 ]; then
+            for log in .connect/*/build.log; do
+              [ -f "$log" ] || continue
+              echo "::group::$log"
+              tail -n 80 "$log"
+              echo "::endgroup::"
+            done
+          fi
+          exit "$status"
+          
+      # `connect validate` reports the unit tests of an application as SUCCESS when it cannot find
+      # their result file, and inside the buildpack it never can: the npm-tester writes to
+      # /tmp/test_result, the CLI mounts it read-only from the host, and the tester logs
+      # `Skipping test results as /tmp/test_result is not writeable`. The validator's own check then
+      # answers ENOENT with `{ success: true }`. The tester also declares itself a buildpack whose
+      # failure the builder tolerates (`Failure consumed as builder allows failure to pass`), so a red
+      # suite fails neither the build nor the test step - it is reported only inside the build log, as
+      # the npm-tester's own `Status:Failed`. Read it from there, or the gate is a green light with no
+      # bulb behind it. The per-application `gate` jobs above run the same suites directly, so this is
+      # the buildpack half: a suite that passes on the runner and fails inside the container.
+      - name: Check the unit tests the buildpack tester ran
+        if: always()
+        run: |
+          failed=""
+          for log in .connect/*/build.log; do
+            [ -f "$log" ] || continue
+            app=$(basename "$(dirname "$log")")
+            grep -q 'BuildPackID:npm-tester Status:Failed' "$log" || continue
+            failed="$failed $app"
+            echo "::group::npm-tester reported a failure for $app"
+            python3 .github/scripts/npm-tester-report.py "$log"
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::the buildpack unit tests failed for:$failed (see the build log artifact)"
+            exit 1
+          fi
+          echo "no application reported a failing buildpack test run"
+
+      # The build logs `connect validate` writes are the whole point of this step, and reaching them
+      # needs `include-hidden-files`: `.connect` is a dot-directory, and `upload-artifact` excludes
+      # hidden paths by default from v4.4 on, which is why the step used to answer `No files were
+      # found with the provided path: .connect. No artifacts will be uploaded.` The path names the
+      # logs rather than the whole tree, so the artifact carries the diagnostics and not the exported
+      # layers. The `tail` loop above stays: it puts the last 80 lines in the run's own output, where
+      # a reader sees them without downloading anything, while the artifact carries each log in full.
+      # `if: always()` keeps the step from being skipped after a failed validate — a failure is
+      # exactly when the logs are wanted — and `if-no-files-found: ignore` keeps a run that wrote no
+      # log from carrying a warning annotation for it.
+      - name: Archive the validation build logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: validation-results
+          include-hidden-files: true
+          if-no-files-found: ignore
+          path: |
+            .connect/*/build.log

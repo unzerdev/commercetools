@@ -1,0 +1,20 @@
+{
+  "name": "@psp/e2e",
+  "version": "0.1.15",
+  "description": "Standalone Playwright E2E harness for the payment connector. TEST-ONLY tooling (not a Connect deployAs app, not a workspace): it drives the processor's HTTP surface against an externally-run stack. See README.md.",
+  "private": true,
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "typescript": "6.0.3",
+    "@types/node": "26.1.2"
+  }
+}

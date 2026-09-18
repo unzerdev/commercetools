@@ -1,0 +1,20 @@
+{
+  "name": "@psp/root-tooling",
+  "version": "0.0.1",
+  "description": "Repository-root lint-staged config only - the four apps are standalone (no workspaces, no fan-out, no dependencies). A pre-commit hook resolves this config for staged files via nearest-config. Each app is formatted by ITS OWN prettier: processor and enabler run 3.x, mc and mc-view run the 2.8.8 the MC toolchain pins and enforces as an eslint error rule. Formatting all four with one binary rewrote the MC apps into 3.x style, leaving their own lint red at every commit.",
+  "private": true,
+  "engines": {
+    "node": "22.x"
+  },
+  "lint-staged": {
+    "{processor,enabler}/**/*.{ts,js,json,mjs}": [
+      "node processor/node_modules/prettier/bin/prettier.cjs --write --ignore-unknown"
+    ],
+    "mc/**/*.{ts,tsx,js,jsx,json,mjs}": [
+      "node mc/node_modules/prettier/bin-prettier.js --write --ignore-unknown"
+    ],
+    "mc-view/**/*.{ts,tsx,js,jsx,json,mjs}": [
+      "node mc-view/node_modules/prettier/bin-prettier.js --write --ignore-unknown"
+    ]
+  }
+}

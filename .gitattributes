@@ -1,0 +1,4 @@
+# Canonical LF in the repo/mirror (Connect builds on Linux); overrides core.autocrlf
+# on checkout so the working tree is LF regardless of the developer's git setting.
+# mc/ and mc-view/ carry their own identical .gitattributes.
+* text=auto eol=lf

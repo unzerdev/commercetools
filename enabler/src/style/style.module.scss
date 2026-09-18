@@ -1,0 +1,62 @@
+@use 'variables';
+
+/*
+ * The chrome the shipped surface renders itself: the per-method heading
+ * (`components/unzer/unzer-method.ts`). Everything else a shopper sees is drawn by the Unzer
+ * elements inside their own iframes and is styled by Unzer.
+ *
+ * `vite.config.ts` injects this sheet into the host page's <head> on every merchant checkout
+ * (`cssInjectedByJsPlugin`), so a rule no template names is dead weight in someone else's page.
+ */
+
+.wrapper {
+  position: relative;
+  width: 100%;
+  margin-bottom: 1rem;
+
+  * {
+    font-family: 'Roboto', sans-serif;
+    box-sizing: border-box;
+  }
+}
+
+.subHeading {
+  color: variables.$color-text-helper;
+  font-size: 0.8125rem;
+  margin-top: 0.125rem;
+  margin-bottom: 1.5rem;
+}
+
+/* The line that tells a shopper which button pays, shown directly under a wallet's own button. */
+.walletHint {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: variables.$color-text-error;
+  font-size: 0.8125rem;
+  margin: 0.5rem 0 0;
+}
+
+/* The arrow in that line, pointing back up at the button the vendor drew. */
+.walletPointer {
+  display: inline-flex;
+  flex: none;
+  animation: unzer-wallet-nudge 1.4s ease-in-out 3;
+}
+
+@keyframes unzer-wallet-nudge {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .walletPointer {
+    animation: none;
+  }
+}

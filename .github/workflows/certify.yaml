@@ -1,0 +1,87 @@
+name: Request certification
+
+on:
+  push:
+    tags:
+      # Release tags v1.0.0, v1.0.1, v1.0.2, etc.
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      # Pre-release tags v1.0.0-alpha.0, v1.0.0-beta.0, etc.
+      - 'v[0-9]+.[0-9]+.[0-9]+-[a-z]+.[0-9]+'
+  workflow_dispatch:
+
+jobs:
+  certify:
+    name: Certify connector
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Use Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.x'
+
+      - name: Certify
+        env:
+          CLIENT_ID: ${{ secrets.PUBLIC_CONNECTOR_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.PUBLIC_CONNECTOR_CLIENT_SECRET }}
+          CONNECTOR_KEY: ${{ secrets.PUBLIC_CONNECTOR_CONNECTOR_KEY }}
+          PROJECT_KEY: ${{ secrets.PUBLIC_CONNECTOR_PROJECT_KEY }}
+        run: |
+          # Without -e a failed login still runs the update and certify, and the log blames the
+          # last command rather than the one that actually broke.
+          set -euo pipefail
+
+          # A secret that is not configured is not an error the runner reports: `env:` defines the
+          # variable with the EMPTY STRING, `set -u` is satisfied, and the first thing that notices is
+          # the CLI's own argument parser - `Error: Flag --client-id expects a value`, which names the
+          # flag and not the missing repository secret behind it. Name them here instead, all of them,
+          # before spending a minute on the install.
+          missing=""
+          for secret in CLIENT_ID CLIENT_SECRET CONNECTOR_KEY PROJECT_KEY; do
+            [ -n "${!secret}" ] || missing="$missing PUBLIC_CONNECTOR_$secret"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::certification needs these repository secrets, and they carry no value:$missing (Settings > Secrets and variables > Actions)"
+            exit 1
+          fi
+
+          npm install -g @commercetools/cli
+
+          # Every value is quoted: a secret that is not configured arrives as the EMPTY STRING (the
+          # `env:` block defines the variable either way, so `set -u` never sees it), and unquoted it
+          # would vanish from the command line and let the next flag be read as its value - a login
+          # that fails complaining about the wrong argument.
+          echo "::group::Authenticating with commercetools"
+          commercetools auth login --client-credentials \
+            --client-id "$CLIENT_ID" \
+            --client-secret "$CLIENT_SECRET" \
+            --project-key "$PROJECT_KEY" \
+            --region europe-west1.gcp
+          echo "::endgroup::"
+
+          # `--repository-url` is passed even though only the tag changes. The CLI builds its update
+          # body as `repository: { url: flags['repository-url'], tag: flags['repository-tag'] }`, which
+          # is ALWAYS truthy, and its service defaults only the tag from the current connector
+          # (`tag: input.repository.tag ?? current.repository.tag`) - never the url. So a tag-only
+          # invocation posts `setRepository` with no url at all, and the platform answers 400 rather
+          # than keeping the url it already has.
+          echo "::group::Updating staged connector to tag $GITHUB_REF_NAME"
+          commercetools connect connectorstaged update \
+            --key "$CONNECTOR_KEY" \
+            --repository-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --repository-tag "$GITHUB_REF_NAME"
+          echo "::endgroup::"
+
+          # Printed BEFORE certification, because the request is refused on the connector's state
+          # (`status`, `isPreviewable`) and the CLI reports the refusal without saying what that state
+          # was. This is the record of what was true at the moment of the request.
+          echo "::group::Staged connector state"
+          commercetools connect connectorstaged describe --key "$CONNECTOR_KEY"
+          echo "::endgroup::"
+
+          echo "::group::Requesting certification"
+          commercetools connect connectorstaged certify --key "$CONNECTOR_KEY"
+          echo "::endgroup::"
+          

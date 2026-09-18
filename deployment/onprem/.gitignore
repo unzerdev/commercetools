@@ -1,0 +1,8 @@
+# Runtime secrets and TLS material must never be committed (only the template ships).
+.env
+.env.*
+!.env.template
+tls/
+*.pem
+*.key
+*.crt

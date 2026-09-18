@@ -1,0 +1,8 @@
+{
+  // The test tree is typechecked as its own project so `tsconfig.json` keeps describing the
+  // shipped application alone. The jest preset transforms TypeScript through babel, which strips
+  // types without checking them, so without this project nothing verifies that a fixture still
+  // matches the DTO it is annotated with.
+  "extends": "./tsconfig.json",
+  "include": ["src", "test"]
+}

@@ -1,0 +1,5 @@
+# Lockfiles are npm-owned build artifacts — never let prettier reformat them
+# (lint-staged runs prettier from the repo root, so this is the effective ignore
+# file for staged lockfiles across the four standalone apps).
+**/package-lock.json
+**/yarn.lock

@@ -1,0 +1,253 @@
+# Hardened on-prem production stack for the payment connector.
+#
+# Runs the same four applications commercetools Connect deploys (processor, enabler, mc, mc-view),
+# plus a container scheduler (the processor auto-capture trigger; no separate job app) and
+# an nginx front that terminates TLS. The nginx front is the ONLY service that publishes a host port;
+# every other service is reachable only through it, over the `internal` network.
+#
+# Each service is hardened per Phase 7 / AC27-30: images built from minimal multi-stage Dockerfiles
+# and pinnable to a digest (see pin-digests.sh), non-root user, read-only root
+# filesystem with explicit tmpfs for the few writable paths, all Linux capabilities dropped,
+# no-new-privileges, cpu/memory limits, a healthcheck, restart policy, and startup ordering via
+# `depends_on: condition: service_healthy`.
+#
+# Secrets are supplied ONLY at runtime through the env file (never baked into an image or ARG). Copy
+# .env.template to .env, fill it in, then from this directory:
+#   docker compose -f docker-compose.yml --env-file .env up -d --build
+#
+# Base-image tags below are precise but must be pinned to immutable digests before production
+# (`./pin-digests.sh` resolves and rewrites them; the runbook mandates it).
+
+x-restart: &restart unless-stopped
+
+x-security: &hardening
+  restart: *restart
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  processor:
+    <<: *hardening
+    image: ${PROCESSOR_IMAGE:-unzer-connector/processor:onprem}
+    build:
+      context: ../../processor
+      dockerfile: ../deployment/onprem/processor.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22.14.0-alpine3.21}
+    env_file:
+      - .env
+    # Node writes only to /tmp; dist/ and node_modules are baked read-only into the image.
+    tmpfs:
+      - /tmp
+    healthcheck:
+      # Liveness only: any HTTP response (even a 401 from the JWT-guarded /operations/status) proves
+      # the server is listening. No unauthenticated health route exists, so a status code is enough.
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:8080/operations/status',r=>process.exit(0)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    networks:
+      - internal
+
+  enabler:
+    <<: *hardening
+    image: ${ENABLER_IMAGE:-unzer-connector/enabler:onprem}
+    build:
+      context: ../../enabler
+      dockerfile: ../deployment/onprem/enabler.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22.14.0-alpine3.21}
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginxinc/nginx-unprivileged:1.27.4-alpine}
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/healthz']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+    networks:
+      - internal
+
+  mc:
+    <<: *hardening
+    image: ${MC_IMAGE:-unzer-connector/mc:onprem}
+    build:
+      context: ../../mc
+      dockerfile: ../deployment/onprem/mc.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22.14.0-alpine3.21}
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginxinc/nginx-unprivileged:1.27.4-alpine}
+        # MC bundle build-time config (NOT secret — safe as build args, baked into the static bundle).
+        CUSTOM_APPLICATION_ID: ${CUSTOM_APPLICATION_ID}
+        ENTRY_POINT_URI_PATH: ${ENTRY_POINT_URI_PATH}
+        CLOUD_IDENTIFIER: ${CLOUD_IDENTIFIER:-gcp-eu}
+        APPLICATION_URL: ${MC_APPLICATION_URL}
+        PROCESSOR_URL: ${PROCESSOR_URL}
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/healthz']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+    networks:
+      - internal
+
+  mc-view:
+    <<: *hardening
+    image: ${MC_VIEW_IMAGE:-unzer-connector/mc-view:onprem}
+    build:
+      context: ../../mc-view
+      dockerfile: ../deployment/onprem/mc-view.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22.14.0-alpine3.21}
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginxinc/nginx-unprivileged:1.27.4-alpine}
+        # Same build-time, non-secret shape as mc; the panel forwards to the same processor origin.
+        # ENTRY_POINT_URI_PATH is the SAME value the mc build gets: the view names its additional
+        # permission group after it to mint the `canManage<PascalCase>` the processor requires, and
+        # `custom-view-config.mjs` refuses to build a configured deployment without it.
+        CUSTOM_VIEW_ID: ${CUSTOM_VIEW_ID}
+        ENTRY_POINT_URI_PATH: ${ENTRY_POINT_URI_PATH}
+        CLOUD_IDENTIFIER: ${CLOUD_IDENTIFIER:-gcp-eu}
+        APPLICATION_URL: ${MC_VIEW_APPLICATION_URL}
+        PROCESSOR_URL: ${PROCESSOR_URL}
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/healthz']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+    networks:
+      - internal
+
+  scheduler:
+    <<: *hardening
+    image: ${SCHEDULER_IMAGE:-unzer-connector/scheduler:onprem}
+    build:
+      context: .
+      dockerfile: scheduler.Dockerfile
+      args:
+        ALPINE_IMAGE: ${ALPINE_IMAGE:-alpine:3.21}
+    environment:
+      # The scheduler POSTs the processor's auto-capture endpoint on a fixed cadence over the internal
+      # network. The endpoint itself is not wired yet; until then the POST is inert (404) and
+      # the wiring is in place. SCHEDULER_TOKEN authenticates the internal call when the endpoint exists.
+      PROCESSOR_URL: http://processor:8080
+      SCHEDULER_TARGET_PATH: ${SCHEDULER_TARGET_PATH:-/jobs/auto-capture}
+      SCHEDULER_INTERVAL_SECONDS: ${SCHEDULER_INTERVAL_SECONDS:-60}
+      SCHEDULER_TOKEN: ${SCHEDULER_TOKEN:-}
+    tmpfs:
+      - /tmp
+    healthcheck:
+      # The loop touches /tmp/scheduler-alive each tick; stale (missing) => unhealthy.
+      test: ['CMD', 'test', '-f', '/tmp/scheduler-alive']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.10'
+          memory: 32M
+    depends_on:
+      processor:
+        condition: service_healthy
+    networks:
+      - internal
+
+  nginx:
+    <<: *hardening
+    image: ${NGINX_FRONT_IMAGE:-unzer-connector/nginx:onprem}
+    build:
+      context: .
+      dockerfile: nginx.Dockerfile
+      args:
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginxinc/nginx-unprivileged:1.27.4-alpine}
+    environment:
+      # Public hostnames each server block matches; the envsubst filter keeps nginx's own $-vars intact.
+      # The filter prefix and these names must agree — a filter that no longer matches leaves
+      # `${PROXY_*}` literal in the rendered config and nginx fails to start.
+      NGINX_ENVSUBST_FILTER: '^PROXY_'
+      PROXY_PROCESSOR_HOST: ${PUBLIC_PROCESSOR_HOST:-_}
+      PROXY_ENABLER_HOST: ${PUBLIC_ENABLER_HOST:-enabler.localhost}
+      PROXY_MC_HOST: ${PUBLIC_MC_HOST:-mc.localhost}
+      PROXY_MCVIEW_HOST: ${PUBLIC_MC_VIEW_HOST:-mc-view.localhost}
+      PROXY_MAX_BODY_SIZE: ${NGINX_MAX_BODY_SIZE:-6m}
+    # The ONLY published service. TLS on 8443 (container) -> 443 (host); 8080 -> 80 redirects to https.
+    ports:
+      - '${HTTPS_BIND:-0.0.0.0}:443:8443'
+      - '${HTTP_BIND:-0.0.0.0}:80:8080'
+    volumes:
+      # TLS material is mounted read-only at runtime — never baked into the image.
+      - ${TLS_CERT_DIR:-./tls}:/etc/nginx/tls:ro
+    tmpfs:
+      # conf.d holds the envsubst-rendered config; /var/cache/nginx and /tmp hold nginx scratch + pid.
+      - /tmp
+      - /var/cache/nginx
+      - /etc/nginx/conf.d
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/healthz']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 128M
+    depends_on:
+      processor:
+        condition: service_healthy
+      enabler:
+        condition: service_healthy
+      mc:
+        condition: service_healthy
+      mc-view:
+        condition: service_healthy
+    networks:
+      - internal
+
+networks:
+  # A single bridge network the front funnels all traffic through. It is deliberately NOT
+  # `internal: true`: the processor must reach commercetools and the PSP (egress required). Host
+  # isolation is achieved by publishing a port on the nginx front ONLY — no other service maps a host
+  # port, so processor/mc/mc-view/scheduler are unreachable from the host.
+  internal:
+    driver: bridge

@@ -1,0 +1,104 @@
+# Front nginx: the ONLY published service. Terminates TLS and reverse-proxies each public hostname to
+# its internal upstream. Rendered by the image's envsubst entrypoint from ${PROXY_*} vars (the filter
+# NGINX_ENVSUBST_FILTER=^PROXY_ protects nginx's own $-variables from substitution).
+#
+# Operators point four DNS names (or four subdomains) at this front; each server block matches one by
+# server_name. The processor host is also the default_server, so an unmatched Host lands there.
+
+limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+
+upstream processor_up { server processor:8080; }
+upstream enabler_up   { server enabler:8080; }
+upstream mc_up        { server mc:8080; }
+upstream mcview_up    { server mc-view:8080; }
+
+# Plain-HTTP listener: health probe + permanent redirect to HTTPS.
+server {
+    listen 8080 default_server;
+    server_name _;
+    server_tokens off;
+
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 'ok';
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# Processor — reached server-to-server by the Merchant Center forward-to proxy, PSP webhooks,
+# and the shopper return leg. Never framed.
+server {
+    listen 8443 ssl default_server;
+    http2 on;
+    server_name ${PROXY_PROCESSOR_HOST};
+    server_tokens off;
+    include /etc/nginx/snippets/tls.conf;
+    include /etc/nginx/snippets/security-headers.conf;
+    add_header X-Frame-Options "DENY" always;
+    client_max_body_size ${PROXY_MAX_BODY_SIZE};
+    limit_req zone=api burst=20 nodelay;
+
+    location / {
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass http://processor_up;
+    }
+}
+
+# Enabler — static browser library embedded by storefronts. Never framed by the MC.
+server {
+    listen 8443 ssl;
+    http2 on;
+    server_name ${PROXY_ENABLER_HOST};
+    server_tokens off;
+    include /etc/nginx/snippets/tls.conf;
+    include /etc/nginx/snippets/security-headers.conf;
+    add_header X-Frame-Options "DENY" always;
+    client_max_body_size 1m;
+
+    location / {
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass http://enabler_up;
+    }
+}
+
+# Merchant Center custom application — framed by the Merchant Center shell. The AUTHORITATIVE CSP is
+# the app's own (`custom-application-config.mjs` headers.csp: connect-src = PROCESSOR_URL, the one
+# directive it declares), which mc-scripts MERGES with the Merchant Center framework's required
+# origins — the merge is a UNION, so a directive declared here can only widen the emitted header. The
+# edge deliberately does NOT re-declare a partial connect-src CSP here (it would drop the framework
+# origins and break the app) and does NOT set X-Frame-Options (framing by the MC shell is required) —
+# it adds only the transport/sniff/referrer headers from the shared snippet.
+server {
+    listen 8443 ssl;
+    http2 on;
+    server_name ${PROXY_MC_HOST};
+    server_tokens off;
+    include /etc/nginx/snippets/tls.conf;
+    include /etc/nginx/snippets/security-headers.conf;
+    client_max_body_size 1m;
+
+    location / {
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass http://mc_up;
+    }
+}
+
+# Merchant Center custom view — same framing/CSP contract as the custom application.
+server {
+    listen 8443 ssl;
+    http2 on;
+    server_name ${PROXY_MCVIEW_HOST};
+    server_tokens off;
+    include /etc/nginx/snippets/tls.conf;
+    include /etc/nginx/snippets/security-headers.conf;
+    client_max_body_size 1m;
+
+    location / {
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass http://mcview_up;
+    }
+}

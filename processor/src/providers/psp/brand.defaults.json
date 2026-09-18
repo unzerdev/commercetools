@@ -1,0 +1,14 @@
+{
+  "paymentInterface": "Unzer",
+  "displayName": "Unzer",
+  "defaultHost": "https://sbx-api.unzer.com",
+  "defaultHostLive": "https://api.unzer.com",
+  "telemetryHeaderName": "X-Unzer-ServerMetaInfo",
+  "shoppingCartExtension": "unzer-commercetools",
+  "managePermission": "canManageUnzerPayments",
+  "integrator": "Unzer",
+  "customObjectContainer": "unzer-connector-config",
+  "paymentMethodsContainer": "unzer-connector-payment-methods",
+  "webhookMarkerContainer": "unzer-connector-webhook-processed",
+  "paymentTypeKey": "unzer-payment"
+}

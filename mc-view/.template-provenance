@@ -1,0 +1,7 @@
+source: https://github.com/commercetools/merchant-center-application-kit
+generator: @commercetools-frontend/create-mc-app@27.7.0
+template: custom-view starter-typescript
+template-version: 27.7.0
+scaffolded: 2026-07-03
+flags: --application-type custom-view --initial-project-key psp-dev --cloud-identifier gcp-eu --package-manager npm --yes
+local-edits: yes

@@ -1,0 +1,128 @@
+@use 'variables';
+
+@use './vx' as *;
+
+/*
+ * The chrome of the composite method list (`components/unzer/method-list.ts`): the method rows the shopper
+ * picks from, the check mark on the chosen one, the host the chosen method's form mounts into, and the
+ * notice shown when the processor offered no method. The forms themselves are drawn by the Unzer elements
+ * inside their own iframes and styled by Unzer.
+ *
+ * `vite.config.ts` injects this sheet into the host page's <head> on every merchant checkout
+ * (`cssInjectedByJsPlugin`), so a rule no template names is dead weight in someone else's page.
+ */
+
+.dropin {
+  width: 100%;
+
+  * {
+    font-family: variables.$font-family;
+    box-sizing: border-box;
+  }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+
+  &[aria-disabled='true'] {
+    pointer-events: none;
+  }
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  padding: 1rem;
+  border: 2px solid variables.$color-border-divider;
+  border-radius: 0.75rem;
+  background: variables.$color-white;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s;
+
+  &:hover,
+  &[data-unzer-selected] {
+    border-color: var(--ctc-radio);
+  }
+
+  /* The row a host was told it cannot submit: outlined in the ERROR colour, not the accent, until the
+     shopper acts on the method itself. */
+  &[data-unzer-attention] {
+    border-color: variables.$color-border-error;
+    box-shadow: 0 0 0 2px variables.$color-border-error;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.logo {
+  width: 3.5rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.name {
+  overflow: hidden;
+  color: variables.$color-text-default;
+  font-size: 0.9375rem;
+  font-weight: variables.$font-weight-medium;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.description {
+  overflow: hidden;
+  color: variables.$color-text-helper;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// A check mark drawn from a rotated border, coloured like the theme's radio and shown on the chosen row only.
+.check {
+  flex-shrink: 0;
+  width: 0.625rem;
+  height: 1.125rem;
+  margin: 0 0.5rem 0.25rem 0;
+  border: solid var(--ctc-radio);
+  border-width: 0 3px 3px 0;
+  transform: rotate(45deg);
+  visibility: hidden;
+}
+
+.row[data-unzer-selected] .check {
+  visibility: visible;
+}
+
+.host {
+  width: 100%;
+
+  &:empty {
+    display: none;
+  }
+}
+
+.empty {
+  margin: 0;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: variables.$color-card-background;
+  color: variables.$color-text-helper;
+  font-size: 0.875rem;
+}

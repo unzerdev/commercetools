@@ -1,0 +1,13 @@
+# Build context for the scheduler and front-nginx images (context = this directory). Keep secrets and
+# TLS private keys out of the build context entirely; only scheduler.sh and nginx/ are ever COPYed.
+.env
+.env.*
+!.env.template
+tls
+*.pem
+*.key
+*.crt
+*.md
+.git
+.DS_Store
+docker-compose.yml
