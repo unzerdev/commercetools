@@ -25,13 +25,15 @@ jobs:
         with:
           node-version: '22.x'
 
-      - name: Install modules
+      - name: Bump every manifest
         run: |
-          npm ci --prefix enabler
-          npm version --prefix enabler ${{ inputs.BUMP_TYPE }}
+          npm version --no-git-tag-version ${{ inputs.BUMP_TYPE }}
+          VERSION=$(node -p "require('./package.json').version")
 
-          npm ci --prefix processor
-          npm version --prefix processor ${{ inputs.BUMP_TYPE }}
+          for APP in processor enabler mc mc-view e2e; do
+            npm ci --prefix "$APP"
+            npm version --prefix "$APP" --no-git-tag-version "$VERSION"
+          done
 
       - name: Commit changes
         run: |
