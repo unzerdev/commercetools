@@ -71,6 +71,7 @@
     "@babel/runtime": "7.26.10",
     "@babel/runtime-corejs3": "7.26.10",
     "diff": "9.0.0",
-    "flatted": "3.4.2"
+    "flatted": "3.4.2",
+    "brace-expansion@1": "1.1.22"
   }
 }
