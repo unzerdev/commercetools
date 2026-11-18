@@ -23,10 +23,10 @@ export interface PaymentMethodView {
   logo?: string;
   /**
    * Whether this method's charge needs a DESCRIBED CUSTOMER — the buy-now-pay-later family, which the
-   * vendor refuses without the payer's name, contact, address and date of birth. The component mounts the
-   * vendor's customer form for such a method and prefills it from {@link PaymentConfig.shopper}; the
-   * element then requires whatever is still missing. The PROCESSOR decides this, so no vendor method list
-   * is hardcoded here.
+   * vendor refuses without the payer's name, contact, address and date of birth. The component hands the
+   * element {@link PaymentConfig.shopper} and mounts the vendor's customer form only when that prefill cannot
+   * describe the payer on its own (a business payer, or a missing name, email or billing address). The
+   * PROCESSOR decides this, so no vendor method list is hardcoded here.
    */
   requiresCustomerData: boolean;
   /**

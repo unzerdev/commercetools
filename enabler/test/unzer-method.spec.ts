@@ -881,6 +881,61 @@ describe('UnzerMethodComponent', () => {
     expect(host.querySelector('unzer-payment > unzer-paylater-invoice')).not.toBeNull();
   });
 
+  const completeShopper: PaymentConfig['shopper'] = {
+    firstName: 'Bon',
+    lastName: 'Scott',
+    email: 'bon@example.com',
+    billingAddress: {
+      street: 'Schöneberger Str.',
+      houseNumber: '21A',
+      postalCode: '10963',
+      city: 'Berlin',
+      countryCode: 'DE',
+    },
+  };
+
+  /** A private payer the cart already describes in full is not asked to retype it: the element gets it as data. */
+  it('mounts no customer form when the prefill already describes a private payer', async () => {
+    const { component } = build({ method: paylaterMethod, shopper: completeShopper });
+    await component.mount('#method');
+
+    expect(host.querySelector('unzer-customer-form')).toBeNull();
+    expect(host.querySelector('unzer-payment > unzer-paylater-invoice')).not.toBeNull();
+    expect(mountedPayment().customerData).toEqual([]);
+  });
+
+  it.each([
+    ['the email', { ...completeShopper, email: '' }],
+    ['the last name', { ...completeShopper, lastName: undefined }],
+    ['the billing city', { ...completeShopper, billingAddress: { ...completeShopper!.billingAddress, city: ' ' } }],
+    ['the billing address', { ...completeShopper, billingAddress: undefined }],
+  ])('mounts the customer form when the prefill lacks %s', async (_missing, shopper) => {
+    const { component } = build({ method: paylaterMethod, shopper });
+    await component.mount('#method');
+
+    expect(host.querySelector('unzer-payment > unzer-customer-form')).not.toBeNull();
+  });
+
+  /** A business payer always gets the form: the vendor's company fields are never prefilled. */
+  it('mounts the customer form for a business payer even with a complete prefill', async () => {
+    const { component } = build({ method: paylaterMethod, shopper: { ...completeShopper, company: 'Acme GmbH' } });
+    await component.mount('#method');
+
+    expect(host.querySelector('unzer-payment > unzer-customer-form')).not.toBeNull();
+  });
+
+  /** What the host states at mount time counts: it can complete a sparse processor prefill. */
+  it('mounts no customer form when the host completes the prefill', async () => {
+    const { component } = build({
+      method: paylaterMethod,
+      shopper: { ...completeShopper, email: undefined },
+      customer: { email: 'bon@example.com' },
+    });
+    await component.mount('#method');
+
+    expect(host.querySelector('unzer-customer-form')).toBeNull();
+  });
+
   it('mounts no customer form for a method that needs no described payer', async () => {
     const { component } = build();
     await component.mount('#method');

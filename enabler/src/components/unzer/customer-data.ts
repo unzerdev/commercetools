@@ -116,6 +116,27 @@ function usableResourceId(id: string | undefined): string | undefined {
   return trimmed && !trimmed.startsWith('s-err-') ? trimmed : undefined;
 }
 
+/**
+ * Whether the vendor's customer form has to be shown: only when the prefill cannot describe a private payer on its
+ * own. A business payer always gets it, because the vendor's company fields are never prefilled.
+ */
+export function customerFormNeeded(prefill: ShopperPrefill | undefined, customerType: 'B2B' | 'B2C'): boolean {
+  if (!prefill || customerType === 'B2B' || prefill.company) {
+    return true;
+  }
+  const address = prefill.billingAddress;
+  const required = [
+    prefill.firstName,
+    prefill.lastName,
+    prefill.email,
+    address?.street,
+    address?.postalCode,
+    address?.city,
+    address?.countryCode,
+  ];
+  return required.some((value) => !value?.trim());
+}
+
 /** The vendor's own date format for a customer form: `YYYY-MM-DD`, from our compact `YYYYMMDD`. */
 function toVendorBirthDate(value: string | undefined): string | undefined {
   if (!value) {

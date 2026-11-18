@@ -52,7 +52,7 @@ import type { PaymentRequest } from '../../dtos/payment.dto';
 import { escapeHtml } from '../../html';
 import { formatMinorUnits } from '../../money';
 import { postPaymentAndFollowUp } from '../post-payment';
-import { toCollectedCustomer, toVendorCustomer, toVendorCustomerId } from './customer-data';
+import { customerFormNeeded, toCollectedCustomer, toVendorCustomer, toVendorCustomerId } from './customer-data';
 import { UNZER_METHOD_ELEMENTS } from './elements';
 import type { UnzerCheckoutElement, UnzerPaymentElement, UnzerPaymentState, UnzerSubmitResult } from './elements';
 import { whenUnzerElementDefined } from './sdk';
@@ -182,7 +182,7 @@ export class UnzerBaseMethodComponent extends BaseComponent {
       }
       paymentEl.appendChild(methodEl);
 
-      if (this.method.requiresCustomerData) {
+      if (this.method.requiresCustomerData && customerFormNeeded(this.shopperPrefill(), this.config.customerType)) {
         paymentEl.appendChild(document.createElement('unzer-customer-form'));
       }
       this.paymentEl = paymentEl;
@@ -675,21 +675,26 @@ export class UnzerBaseMethodComponent extends BaseComponent {
     }
   }
 
+  /** The processor's prefill with what the host states at mount time laid over it; `undefined` when neither says anything. */
+  private shopperPrefill(): ShopperPrefill | undefined {
+    const hostCustomer = this.componentOptions?.customer;
+    return this.config.shopper || hostCustomer ? { ...this.config.shopper, ...hostCustomer } : undefined;
+  }
+
   /**
    * Hand the element the whole CUSTOMER as API data (`toVendorCustomer`) - for EVERY method, not only
    * the ones that show the form. Whether the vendor renders a customer form and whether the CHARGE has a
    * described payer are two different questions: the element creates its customer resource either way, and a
    * card charge linked to a customer that names nobody is the same fraud- and invoice-check problem as a
-   * paylater one. `<unzer-customer-form>` is still mounted only for a `requiresCustomerData` method.
+   * paylater one. `<unzer-customer-form>` is mounted only for a `requiresCustomerData` method whose prefill
+   * cannot describe the payer on its own.
    *
    * `setCustomerData` is optional on the element, so a surface whose SDK predates the customer API falls back
    * to `updateCustomerData` - which cannot carry the reference, and then a checkout behaves as it did before
    * this became possible.
    */
   private prefillCustomerForm(paymentEl: UnzerPaymentElement): void {
-    const hostCustomer = this.componentOptions?.customer;
-    const prefill: ShopperPrefill | undefined =
-      this.config.shopper || hostCustomer ? { ...this.config.shopper, ...hostCustomer } : undefined;
+    const prefill = this.shopperPrefill();
     if (!prefill) {
       return;
     }
